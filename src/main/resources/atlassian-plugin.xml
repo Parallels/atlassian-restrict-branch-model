@@ -1,0 +1,34 @@
+<atlassian-plugin key="${atlassian.plugin.key}" name="${project.name}" plugins-version="2">
+    <plugin-info>
+        <description>${project.description}</description>
+        <version>${project.version}</version>
+        <vendor name="${project.organization.name}" url="${project.organization.url}" />
+        <param name="plugin-icon">images/pluginIcon.png</param>
+        <param name="plugin-logo">images/pluginLogo.png</param>
+    </plugin-info>
+
+    <!-- add our i18n resource -->
+    <resource type="i18n" name="i18n" location="restrictbranchmodel"/>
+
+    <!-- add our web resources -->
+    <web-resource key="restrictbranchmodel-resources" name="restrictbranchmodel Web Resources">
+        <dependency>com.atlassian.auiplugin:ajs</dependency>
+        
+        <resource type="download" name="restrictbranchmodel.css" location="/css/restrictbranchmodel.css"/>
+        <resource type="download" name="restrictbranchmodel.js" location="/js/restrictbranchmodel.js"/>
+        <resource type="download" name="images/" location="/images"/>
+
+        <context>restrictbranchmodel</context>
+    </web-resource>
+
+    <component-import key="branchModelService" interface="com.atlassian.bitbucket.branch.model.BranchModelService" />
+    <component-import key="repositoryHookService" interface="com.atlassian.bitbucket.hook.repository.RepositoryHookService" />
+
+    <repository-hook name="Restrict Development to Branch Model" i18n-name-key="restrict-branch-model-pre-receive-hook.name" key="restrict-branch-model-pre-receive-hook" class="com.parallels.bitbucket.plugins.restrictbranchmodel.RestrictBranchModelPreReceiveHook">
+        <description key="restrict-branch-model-pre-receive-hook.description">Deny pushing branches that do not conform to repository's branch model</description>
+    </repository-hook>
+
+    <component key="branchCreationRequestedEventListener" class="com.parallels.bitbucket.plugins.restrictbranchmodel.BranchCreationRequestedEventListener"/>
+    <component key="repositoryHookEnabledEventListener" class="com.parallels.bitbucket.plugins.restrictbranchmodel.RepositoryHookEnabledEventListener"/>
+
+</atlassian-plugin>
