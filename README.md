@@ -1,5 +1,7 @@
 # Restrict Development to Branch Model
 
+[![Build Status](https://travis-ci.org/Parallels/atlassian-restrict-branch-model.svg?branch=master)](https://travis-ci.org/Parallels/atlassian-restrict-branch-model)
+
 [Atlassian Bitbucket Server](https://www.atlassian.com/software/bitbucket/server) Plugin
 
 Deny creating branches that do not conform to repository's branch model.
