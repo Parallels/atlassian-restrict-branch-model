@@ -26,6 +26,7 @@
 
     <repository-hook name="Restrict Development to Branch Model" i18n-name-key="restrict-branch-model-pre-receive-hook.name" key="restrict-branch-model-pre-receive-hook" class="com.parallels.bitbucket.plugins.restrictbranchmodel.RestrictBranchModelPreReceiveHook">
         <description key="restrict-branch-model-pre-receive-hook.description">Deny pushing branches that do not conform to repository's branch model</description>
+        <icon>images/pluginLogo.png</icon>
     </repository-hook>
 
     <component key="branchCreationRequestedEventListener" class="com.parallels.bitbucket.plugins.restrictbranchmodel.BranchCreationRequestedEventListener"/>
