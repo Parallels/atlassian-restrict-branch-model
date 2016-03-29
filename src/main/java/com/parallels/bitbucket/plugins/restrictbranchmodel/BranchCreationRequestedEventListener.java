@@ -1,7 +1,13 @@
 package com.parallels.bitbucket.plugins.restrictbranchmodel;
 
+import com.atlassian.bitbucket.repository.Repository;
+
 import com.atlassian.bitbucket.hook.repository.*;
 import com.atlassian.bitbucket.branch.model.*;
+
+import com.atlassian.bitbucket.user.SecurityService;
+import com.atlassian.bitbucket.util.UncheckedOperation;
+import com.atlassian.bitbucket.permission.Permission;
 
 import com.atlassian.bitbucket.event.branch.BranchCreationRequestedEvent;
 import com.atlassian.event.api.EventListener;
@@ -21,15 +27,18 @@ public class BranchCreationRequestedEventListener {
         "com.parallels.bitbucket.plugins.restrictbranchmodel:restrict-branch-model-pre-receive-hook";
 
     private final I18nService i18nService;
+    private final SecurityService securityService;
     private RepositoryHookService repositoryHookService;
     private BranchModelService branchModelService;
 
     public BranchCreationRequestedEventListener(
         I18nService i18nService,
+        SecurityService securityService,
         RepositoryHookService repositoryHookService,
         BranchModelService branchModelService
     ) {
         this.i18nService = i18nService;
+        this.securityService = securityService;
         this.repositoryHookService = repositoryHookService;
         this.branchModelService = branchModelService;
     }
@@ -39,12 +48,19 @@ public class BranchCreationRequestedEventListener {
         // Check if a branch created via UI/REST conforms
         // to the repository's branching model
         // Run only if the corresponding pre-receive hook is enabled
-        RepositoryHook repositoryHook =
-            repositoryHookService.getByKey(event.getRepository(), HOOK_KEY);
+
+        final Repository repository = event.getRepository();
+
+        final RepositoryHook repositoryHook = securityService.withPermission(Permission.REPO_ADMIN, "Get hook configuration").call(
+            new UncheckedOperation<RepositoryHook>() {
+                public RepositoryHook perform() {
+                    return repositoryHookService.getByKey(repository, HOOK_KEY);
+                }
+            });
 
         if (repositoryHook == null) {
             log.error("Hook {} not found for repository ID={}", HOOK_KEY,
-                event.getRepository().getId());
+                repository.getId());
             return;
         }
 
@@ -53,11 +69,11 @@ public class BranchCreationRequestedEventListener {
             return;
         }
 
-        BranchModel branchModel = this.branchModelService.getModel(event.getRepository());
+        BranchModel branchModel = this.branchModelService.getModel(repository);
 
         if (branchModel == null) {
             log.error("Branching model is not configured for repository ID={}",
-                event.getRepository().getId());
+                repository.getId());
             return;
         }
 
@@ -69,6 +85,8 @@ public class BranchCreationRequestedEventListener {
 
             event.cancel(i18nService.createKeyedMessage("com.parallels.bitbucket.plugins.restrictbranchmodel.branch-prefix-list",
                 prefixList));
+
+            log.warn("Cancel creating branch {}", event.getBranch().getDisplayId());
         }
     }
 }
