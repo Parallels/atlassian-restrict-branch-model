@@ -4,6 +4,8 @@
 
 [Atlassian Bitbucket Server](https://www.atlassian.com/software/bitbucket/server) Plugin
 
+Download from Atlassian Marketplace: [Restrict Development to Branch Model](https://marketplace.atlassian.com/plugins/com.parallels.bitbucket.plugins.restrictbranchmodel/server/overview)
+
 Deny creating branches that do not conform to repository's branch model.
 
 Decline `git push` that creates a branch outside of repository's branching model and
