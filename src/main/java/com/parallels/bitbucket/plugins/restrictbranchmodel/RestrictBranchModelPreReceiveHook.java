@@ -1,35 +1,45 @@
 package com.parallels.bitbucket.plugins.restrictbranchmodel;
 
-import com.atlassian.bitbucket.hook.*;
-import com.atlassian.bitbucket.hook.repository.*;
+import com.atlassian.bitbucket.hook.repository.PreRepositoryHook;
+import com.atlassian.bitbucket.hook.repository.PreRepositoryHookContext;
+import com.atlassian.bitbucket.hook.repository.RepositoryHookRequest;
+import com.atlassian.bitbucket.hook.repository.RepositoryHookResult;
+import com.atlassian.bitbucket.hook.repository.RepositoryHookTrigger;
+import com.atlassian.bitbucket.hook.repository.StandardRepositoryHookTrigger;
 
-import com.atlassian.bitbucket.repository.*;
-import com.atlassian.bitbucket.branch.model.*;
+import com.atlassian.bitbucket.repository.Repository;
+import com.atlassian.bitbucket.repository.RepositoryService;
+import com.atlassian.bitbucket.repository.RefChange;
+import com.atlassian.bitbucket.repository.MinimalRef;
+import com.atlassian.bitbucket.repository.RefChangeType;
+import com.atlassian.bitbucket.repository.StandardRefType;
 
+import com.atlassian.bitbucket.branch.model.BranchModelService;
+import com.atlassian.bitbucket.branch.model.BranchModel;
 import com.atlassian.bitbucket.i18n.I18nService;
 
-import java.util.Collection;
-import java.util.regex.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+import com.atlassian.plugin.spring.scanner.annotation.imports.ComponentImport;
 
+import java.util.ArrayList;
+import java.util.List;
 import com.google.common.base.Joiner;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+@Component("restrictBranchModelPreReceiveHook")
 public class RestrictBranchModelPreReceiveHook
-    implements PreReceiveRepositoryHook {
-    private static final Logger log = LoggerFactory.getLogger(
-        PreReceiveRepositoryHook.class);
+    implements PreRepositoryHook<RepositoryHookRequest> {
 
     private final I18nService i18nService;
+    private final RepositoryService repoService;
+    private final BranchModelService branchModelService;
 
-    private RepositoryService repoService;
-    private BranchModelService branchModelService;
-
+    @Autowired
     public RestrictBranchModelPreReceiveHook(
-        I18nService i18nService,
-        RepositoryService repoService,
-        BranchModelService branchModelService
+        @ComponentImport I18nService i18nService,
+        @ComponentImport RepositoryService repoService,
+        @ComponentImport BranchModelService branchModelService
     ) {
         this.i18nService = i18nService;
         this.repoService = repoService;
@@ -40,81 +50,67 @@ public class RestrictBranchModelPreReceiveHook
      * Restrict development to repository's branching model.
      */
     @Override
-    public boolean onReceive(
-        RepositoryHookContext context,
-        Collection<RefChange> refChanges,
-        HookResponse hookResponse
-    ) {
-        Repository repo = context.getRepository();
+    public RepositoryHookResult preUpdate(PreRepositoryHookContext context,
+        RepositoryHookRequest request) {
 
-        // Empty repository does not have a branching model
+        RepositoryHookTrigger t = request.getTrigger();
+        if (t != StandardRepositoryHookTrigger.BRANCH_CREATE && t != StandardRepositoryHookTrigger.REPO_PUSH) {
+            return RepositoryHookResult.accepted();
+        }
+
+        Repository repo = request.getRepository();
+
+        // Cannot construct branch model for empty repository
         if (repoService.isEmpty(repo)) {
-            return true;
+            return RepositoryHookResult.accepted();
         }
 
+        //@Nonnull
         BranchModel branchModel = this.branchModelService.getModel(repo);
-
-        if (branchModel == null) {
-            log.error("Branching model is not defined for repository ID={}", repo.getId());
-            hookResponse.err().printf("error: %s\n", i18nService.getMessage(
-                "com.parallels.bitbucket.plugins.restrictbranchmodel.model-not-defined",
-                repo.getName()));
-            return true;
+        // No branch types configured
+        if (branchModel.getTypes().isEmpty()) {
+            return RepositoryHookResult.accepted();
         }
 
-        // Check if added refs conform to the repository's branching model
+        List<String> prefixList = PluginUtils.getBranchTypePrefixList(branchModel);
+        List<String> refsDeclined = new ArrayList<String>();
 
-        // Indicates whether the hook allows the push to continue
-        Boolean permit = true;
-
-        for (RefChange refChange : refChanges) {
-            MinimalRef ref = refChange.getRef();
-
-            // Indicated whether the ref conforms to the repository's branching model
-            Boolean conforms = false;
+        for (RefChange refChange : request.getRefChanges()) {
+            // Indicates whether the ref can be classified by the branch model
+            Boolean classified = false;
 
             if (refChange.getType() == RefChangeType.ADD) {
+                MinimalRef ref = refChange.getRef();
+
                 if (ref.getType() != StandardRefType.BRANCH) {
                     // ref is not branch
                     continue;
                 }
-                log.debug("Detected new branch {}", ref.toString());
 
                 // Cannot use BranchClassifier.getType() because it wants a Branch instance,
-                // not SimpleMinimalRef (which is refChange.getRef())
-                // Classify manually
-                for (BranchType branchType : branchModel.getTypes()) {
-                    String prefix = PluginUtils.getBranchTypePrefix(branchType);
+                // and not SimpleMinimalRef (which is refChange.getRef())
+                // So, have to classify manually
 
-                    if (prefix == null) {
-                        log.error("getBranchTypePrefix({}) returned null", branchType.toString());
-                        hookResponse.err().printf("error: %s\n", i18nService.getMessage(
-                            "com.parallels.bitbucket.plugins.restrictbranchmodel.model-classify-failed",
-                            ref.getDisplayId()));
-                        continue;
-                    }
-
+                for (String prefix : prefixList) {
                     if (ref.getDisplayId().startsWith(prefix)) {
-                        conforms = true;
+                        classified = true;
+                        break;
                     }
                 }
 
-                if (!conforms) {
-                    hookResponse.err().printf("error: %s\n", i18nService.getMessage(
-                        "com.parallels.bitbucket.plugins.restrictbranchmodel.branch-creation-declined",
-                        ref.getDisplayId()));
-
-                    String prefixList = Joiner.on(", ").join(PluginUtils.getBranchTypePrefixList(branchModel));
-                    hookResponse.err().printf("error: %s\n", i18nService.getMessage(
-                        "com.parallels.bitbucket.plugins.restrictbranchmodel.branch-prefix-list",
-                        prefixList));
-
-                    permit = false;
+                if (!classified) {
+                    refsDeclined.add(ref.getDisplayId());
                 }
             }
         }
 
-        return permit;
-    }
+        if (!refsDeclined.isEmpty()) {
+            return RepositoryHookResult.rejected(
+                i18nService.getMessage("com.parallels.bitbucket.plugins.restrictbranchmodel.branch-creation-declined", Joiner.on(", ").join(refsDeclined)),
+                i18nService.getMessage("com.parallels.bitbucket.plugins.restrictbranchmodel.branch-prefix-list", Joiner.on(", ").join(prefixList))
+            );
+        }
 
+        return RepositoryHookResult.accepted();
+    }
 }
